@@ -1,4 +1,3 @@
-// 自作用に改造済み
 /*--------------------------------------------------------------------------
 　ターン開始時に範囲回復、範囲ダメージができるようになるスクリプト ver 2.3
 ■作成者
@@ -16,10 +15,10 @@
 スキル「支援」のカスタムパラメータで
 ・敵勢に効果をもたらしたい場合は"rival_support:true"を入れてください。無い場合は通常の支援と同じく自軍に効果が発生します。
 ・"self_support:true"と入れると"使用者のみ"以外の設定でも自身に効果を与える事が可能です。
+
 ・HPの回復量は"hp_recovery:{value: '<HPの回復量>'}"もしくは"hp_recovery:{rate: '<HP回復率 (%)>'}"で指定してください。
 ・ダメージを与えたい場合はvalueやrateを負の値にしてください。
 ・anime {runtime:<ランタイムならtrue/オリジナルならfalse>, id: <エフェクトID>}を入れる事で、回復時のエフェクトを変更する事もできます
-
 
 例1.毎ターン味方のHPを8回復させたい場合
 hp_recovery:{
@@ -77,7 +76,6 @@ ver 1.1 2016/11/02
 ・スキルが発動している事をわかりやすくしました（最初にスキル持ちのユニットに注目演出が入ります）
 ・割合(カスパラのrate)でHPの回復量を指定できるようにしました。
 
-
 ■対応バージョン
 SRPG Studio Version:1.122
 
@@ -89,496 +87,493 @@ SRPG Studio Version:1.122
 ・再配布、転載　OK (バグなどがあったら修正できる方はご自身で修正版を配布してもらっても構いません)
 ・wiki掲載　OK
 ・SRPG Studio利用規約は遵守してください。
-
 --------------------------------------------------------------------------*/
 
 (function() {
-// デフォルトのRTPのエフェクトIDです
-// カスパラで設定が無い場合はこのアニメが適用されます
-var ENTIRE_RECOVERY_DEFAULT_ANIME_ID = 100;
-var ENTIRE_RECOVERY_ALLRANGEVALUE = -1;
 
-var tempFunctions = {
-	TurnChangeStart: {
-		pushFlowEntries: TurnChangeStart.pushFlowEntries
-	}
-};
+	// デフォルトのRTPのエフェクトIDです
+	// カスパラで設定が無い場合はこのアニメが適用されます
+	var ENTIRE_RECOVERY_DEFAULT_ANIME_ID = 100;
+	var ENTIRE_RECOVERY_ALLRANGEVALUE = -1;
 
-TurnChangeStart.pushFlowEntries = function(straightFlow) {
-
-	tempFunctions.TurnChangeStart.pushFlowEntries.call(this, straightFlow);
-
-	straightFlow.insertFlowEntry(EntireRecoveryFlowEntry,1);
-};
-
-var EntireRecoveryFlowEntry = defineObject(BaseFlowEntry,
-{
-	_entireHpRecovery: [],
-	_invocationCount: 0,
-	_index: 0,
-
-	enterFlowEntry: function(turnChange) {
-		this._prepareMemberData(turnChange);
-		return this._completeMemberData(turnChange);
-	},
-
-	moveFlowEntry: function() {
-		var result = this._entireHpRecovery[this._index].moveEventCommandCycle();
-
-		if (result !== MoveResult.CONTINUE) {
-			this._index++;
-			if (this._index < this._invocationCount) {
-				return MoveResult.CONTINUE;
-			}
+	var tempFunctions = {
+		TurnChangeStart: {
+			pushFlowEntries: TurnChangeStart.pushFlowEntries
 		}
+	};
 
-		return result;
-	},
+	TurnChangeStart.pushFlowEntries = function(straightFlow) {
 
-	drawFlowEntry: function() {
-		this._entireHpRecovery[this._index].drawEventCommandCycle();
-	},
+		tempFunctions.TurnChangeStart.pushFlowEntries.call(this, straightFlow);
 
-	_prepareMemberData: function(turnChange) {
-		this._entireHpRecovery = [];
-	},
+		straightFlow.insertFlowEntry(EntireRecoveryFlowEntry,1);
+	};
 
-	_completeMemberData: function(turnChange) {
-		var unit, recoveryValue, unitType, supportSkillList, entireHpRecovery, skill;
-		var isSkillInvocaiton = false;
-		var isSkipMode = CurrentMap.isTurnSkipMode();
-		var actorList = TurnControl.getActorList();
-		var listArray = FilterControl.getListArray(UnitFilterFlag.PLAYER | UnitFilterFlag.ENEMY | UnitFilterFlag.ALLY);
-		var recoveryUnits = [];
+	var EntireRecoveryFlowEntry = defineObject(BaseFlowEntry,
+	{
+		_entireHpRecovery: [],
+		_invocationCount: 0,
+		_index: 0,
 
-		for (var actorIndex = 0; actorIndex < actorList.getCount(); actorIndex++) {
-			unit = actorList.getData(actorIndex);
+		enterFlowEntry: function(turnChange) {
+			this._prepareMemberData(turnChange);
+        	return this._completeMemberData(turnChange);
+        },
 
-			if (actorIndex === 0) {
-				unitType = unit.getUnitType();
+		moveFlowEntry: function() {
+			var result = this._entireHpRecovery[this._index].moveEventCommandCycle();
+
+			if (result !== MoveResult.CONTINUE) {
+				this._index++;
+				if (this._index < this._invocationCount) {
+					return MoveResult.CONTINUE;
+				}
 			}
 
-			supportSkillList = SkillControl.getDirectSkillArray(unit, SkillType.SUPPORT, '');
+			return result;
+		},
 
-			for (var skillIndex = 0; skillIndex < supportSkillList.length; skillIndex++) {
-				recoveryUnits = [];
-				isSkillInvocaiton = false;
+		drawFlowEntry: function() {
+			this._entireHpRecovery[this._index].drawEventCommandCycle();
+		},
 
-				skill = supportSkillList[skillIndex].skill;//支援スキルの取得
+		_prepareMemberData: function(turnChange) {
+			this._entireHpRecovery = [];
+		},
 
-				if (typeof skill.custom.hp_recovery !== 'object') {
+		_completeMemberData: function(turnChange) {
+			var unit, recoveryValue, unitType, supportSkillList, entireHpRecovery, skill;
+			var isSkillInvocaiton = false;
+			var isSkipMode = CurrentMap.isTurnSkipMode();
+			var actorList = TurnControl.getActorList();
+			var listArray = FilterControl.getListArray(UnitFilterFlag.PLAYER | UnitFilterFlag.ENEMY | UnitFilterFlag.ALLY);
+			var recoveryUnits = [];
+
+			for (var actorIndex = 0; actorIndex < actorList.getCount(); actorIndex++) {
+				unit = actorList.getData(actorIndex);
+
+				if (actorIndex === 0) {
+					unitType = unit.getUnitType();
+				}
+
+				supportSkillList = SkillControl.getDirectSkillArray(unit, SkillType.SUPPORT, '');
+
+				for (var skillIndex = 0; skillIndex < supportSkillList.length; skillIndex++) {
+					recoveryUnits = [];
+					isSkillInvocaiton = false;
+
+					skill = supportSkillList[skillIndex].skill;//支援効果を取得
+
+					if (typeof skill.custom.hp_recovery !== 'object') {
+						continue;
+					}
+
+					//条件を満たしていた場合は支援回復処理を開始する
+					if (this._isTargetUnitType(skill, unitType, UnitType.PLAYER)) {
+						isSkillInvocaiton |= this._collectHpRecoverySupportSkill(unit, listArray[0], recoveryUnits, isSkipMode, skill);
+					}
+
+					if (this._isTargetUnitType(skill, unitType, UnitType.ENEMY)) {
+						isSkillInvocaiton |= this._collectHpRecoverySupportSkill(unit, listArray[1], recoveryUnits, isSkipMode, skill);
+					}
+
+					if (this._isTargetUnitType(skill, unitType, UnitType.ALLY)) {
+						isSkillInvocaiton |= this._collectHpRecoverySupportSkill(unit, listArray[2], recoveryUnits, isSkipMode, skill);
+					}
+
+					isSkillInvocaiton |= this._checkHpRecoverySupportSkill(unit, null, true, recoveryUnits, isSkipMode, skill);
+
+					if (isSkillInvocaiton) {
+						this._entireHpRecovery.push(createObject(EntireHpRecovery));
+						this._entireHpRecovery[this._invocationCount].enterEventCommandCycle(skill, unit, recoveryUnits);
+						this._invocationCount += 1;
+					}
+				}
+			}
+
+			if (this._invocationCount === 0) {
+				return EnterResult.NOTENTER;
+			}
+
+			return EnterResult.OK;
+		},
+
+		_isSupportable: function(unit, targetUnit, skill) {
+			return SupportCalculator._isSupportable.call(this, unit, targetUnit, skill);
+		},
+
+		_checkHpRecoverySupportSkill: function(unit, targetUnit, isSelf, recoveryUnits, isSkipMode, skill) {
+			var i, skill, isSet, indexArray, startRange, endRange;
+			var isInvocation = false;
+			var recoveryValue = 0;
+			var arrayObject = {};
+
+			isSet = false;
+
+			if (isSelf) {
+				if (skill.getRangeType() === SelectionRangeType.SELFONLY || (typeof skill.custom.self_support === 'boolean' && skill.custom.self_support)) {
+					isSet = true;
+					targetUnit = unit;
+				}
+			} else {
+				if (skill.getRangeType() === SelectionRangeType.ALL) {
+					endRange = ENTIRE_RECOVERY_ALLRANGEVALUE;
+				}
+				else if (skill.getRangeType() === SelectionRangeType.MULTI) {
+					endRange = skill.getRangeValue();
+				}
+				else {
+					endRange = 0;
+				}
+
+				if (typeof skill.custom.start_range === 'number') {
+					startRange = skill.custom.start_range;
+				}
+				else {
+					startRange = 1;
+				}
+
+				if (this._isWithinRange(unit, targetUnit, startRange, endRange)) {
+					isSet = true;
+				}
+				else {
+					isSet = false;
+				}
+			}
+
+			if (isSet && this._isSupportable(unit, targetUnit, skill)) {
+
+				recoveryValue = this._calculateRecoveryValue(targetUnit, skill);
+
+				arrayObject = {
+					unit: targetUnit,
+					recoveryValue: recoveryValue
+				};
+
+				recoveryUnits.push(arrayObject);
+
+				if (this._isChangeHp(targetUnit, recoveryValue)) {
+					isInvocation = true;
+				}
+
+			}
+
+			return isInvocation;
+		},
+
+		_isWithinRange: function(unit, targetUnit, startRange, endRange) {
+			var distance = Math.abs(unit.getMapX() - targetUnit.getMapX()) + Math.abs(unit.getMapY() - targetUnit.getMapY());
+		
+			if (distance >= startRange && (distance <= endRange || endRange === ENTIRE_RECOVERY_ALLRANGEVALUE)) {
+				return true;
+			}
+			else {
+				return false;
+			}
+		},
+
+		_calculateRecoveryValue: function(unit, skill) {
+			var recoveryValue = 0;
+			var Mhp = ParamBonus.getMhp(unit);
+
+			if (skill.custom.hp_recovery.value) {
+				recoveryValue = parseInt(skill.custom.hp_recovery.value);
+			}
+
+			if (skill.custom.hp_recovery.rate) {
+				recoveryValue += Math.floor(ParamBonus.getMhp(unit) * parseInt(skill.custom.hp_recovery.rate) / 100);
+			}
+
+			return recoveryValue;
+		},
+
+		_isChangeHp: function(unit, recoveryValue) {
+			var nowHp = unit.getHp();
+
+			return !(nowHp === ParamBonus.getMhp(unit) & recoveryValue > 0)&!(nowHp === 1 & recoveryValue < 0)&recoveryValue !== 0;
+
+		},
+
+		_collectHpRecoverySupportSkill: function(unit, list, recoveryUnits, isSkipMode, skill) { 
+			var targetUnit;
+			var isInvocation = false;
+			var isSelfSupport = false;
+
+			if (typeof skill.custom.self_support === 'boolean') {
+				isSelfSupport = skill.custom.self_support;
+			}
+
+			for (var index = 0; index < list.getCount(); index++) {
+				targetUnit = list.getData(index);
+
+				if (unit === targetUnit && !isSelfSupport) {
 					continue;
 				}
 
-				//条件を満たしていた場合は支援回復処理を開始する
-				if (this._isTargetUnitType(skill, unitType, UnitType.PLAYER)) {
-					isSkillInvocaiton |= this._collectHpRecoverySupportSkill(unit, listArray[0], recoveryUnits, isSkipMode, skill);
-				}
-
-				if (this._isTargetUnitType(skill, unitType, UnitType.ENEMY)) {
-					isSkillInvocaiton |= this._collectHpRecoverySupportSkill(unit, listArray[1], recoveryUnits, isSkipMode, skill);
-				}
-
-				if (this._isTargetUnitType(skill, unitType, UnitType.ALLY)) {
-					isSkillInvocaiton |= this._collectHpRecoverySupportSkill(unit, listArray[2], recoveryUnits, isSkipMode, skill);
-				}
-
-				isSkillInvocaiton |= this._checkHpRecoverySupportSkill(unit, null, true, recoveryUnits, isSkipMode, skill);
-
-				if (isSkillInvocaiton) {
-					this._entireHpRecovery.push(createObject(EntireHpRecovery));
-					this._entireHpRecovery[this._invocationCount].enterEventCommandCycle(skill, unit, recoveryUnits);
-					this._invocationCount += 1;
-				}
-			}
-		}
-
-		if (this._invocationCount === 0) {
-			return EnterResult.NOTENTER;
-		}
-
-		return EnterResult.OK;
-	},
-
-	_isSupportable: function(unit, targetUnit, skill) {
-		return SupportCalculator._isSupportable.call(this, unit, targetUnit, skill);
-	},
-
-	_checkHpRecoverySupportSkill: function(unit, targetUnit, isSelf, recoveryUnits, isSkipMode, skill) {
-		var i, skill, isSet, indexArray, startRange, endRange;
-		var isInvocation = false;
-		var recoveryValue = 0;
-		var arrayObject = {};
-
-		isSet = false;
-
-		if (isSelf) {
-			if (skill.getRangeType() === SelectionRangeType.SELFONLY || (typeof skill.custom.self_support === 'boolean' && skill.custom.self_support)) {
-				isSet = true;
-				targetUnit = unit;
-			}
-		} 
-		else {
-			if (skill.getRangeType() === SelectionRangeType.ALL) {
-				endRange = ENTIRE_RECOVERY_ALLRANGEVALUE;
-			}
-			else if (skill.getRangeType() === SelectionRangeType.MULTI) {
-				endRange = skill.getRangeValue();
-			}
-			else {
-				endRange = 0;
+				isInvocation |= this._checkHpRecoverySupportSkill(unit, targetUnit, false, recoveryUnits, isSkipMode, skill);
 			}
 
-			if (typeof skill.custom.start_range === 'number') {
-				startRange = skill.custom.start_range;
+			return isInvocation;
+		},
+
+		_isTargetUnitType: function(skill, unitType, targetType) {
+			var isRivalSkill = false;
+
+			if (typeof skill.custom.rival_support === 'boolean') {
+				isRivalSkill = skill.custom.rival_support;
 			}
-			else {
-				startRange = 1;
+
+			if ((unitType === targetType && !isRivalSkill) || (unitType !== targetType && isRivalSkill && (unitType === UnitType.ENEMY || targetType === UnitType.ENEMY))) {
+				return true;
 			}
 
-			if (this._isWithinRange(unit, targetUnit, startRange, endRange)) {
-				isSet = true;
-			}
-			else {
-				isSet = false;
-			}
-		}
-
-		if (isSet && this._isSupportable(unit, targetUnit, skill)) {
-
-			recoveryValue = this._calculateRecoveryValue(targetUnit, skill);
-
-			arrayObject = {
-				unit: targetUnit,
-				recoveryValue: recoveryValue
-			};
-
-			recoveryUnits.push(arrayObject);
-
-			if (this._isChangeHp(targetUnit, recoveryValue)) {
-				isInvocation = true;
-			}
-		
-		}
-
-		return isInvocation;
-	},
-
-	_isWithinRange: function(unit, targetUnit, startRange, endRange) {
-		var distance = Math.abs(unit.getMapX() - targetUnit.getMapX()) + Math.abs(unit.getMapY() - targetUnit.getMapY());
-		
-		if (distance >= startRange && (distance <= endRange || endRange === ENTIRE_RECOVERY_ALLRANGEVALUE)) {
-			return true;
-		}
-		else {
 			return false;
 		}
-	},
-
-	_calculateRecoveryValue: function(unit, skill) {
-		var recoveryValue = 0;
-		var Mhp = ParamBonus.getMhp(unit);
-
-		if (skill.custom.hp_recovery.value) {
-			recoveryValue = parseInt(skill.custom.hp_recovery.value);
-		}
-
-		if (skill.custom.hp_recovery.rate) {
-			recoveryValue += Math.floor(ParamBonus.getMhp(unit) * parseInt(skill.custom.hp_recovery.rate) / 100);
-		}
-
-		return recoveryValue;
-	},
-
-	_isChangeHp: function(unit, recoveryValue) {
-		var nowHp = unit.getHp();
-
-		return !(nowHp === ParamBonus.getMhp(unit) & recoveryValue > 0)&!(nowHp === 1 & recoveryValue < 0)&recoveryValue !== 0;
-
-	},
-
-	_collectHpRecoverySupportSkill: function(unit, list, recoveryUnits, isSkipMode, skill) { 
-		var targetUnit;
-		var isInvocation = false;
-		var isSelfSupport = false;
-
-		if (typeof skill.custom.self_support === 'boolean') {
-			isSelfSupport = skill.custom.self_support;
-		}
-
-		for (var index = 0; index < list.getCount(); index++) {
-			targetUnit = list.getData(index);
-
-			if (unit === targetUnit && !isSelfSupport) {
-				continue;
-			}
-
-			isInvocation |= this._checkHpRecoverySupportSkill(unit, targetUnit, false, recoveryUnits, isSkipMode, skill);
-		}
-
-		return isInvocation;
-	},
-
-	_isTargetUnitType: function(skill, unitType, targetType) {
-		var isRivalSkill = false;
-
-		if (typeof skill.custom.rival_support === 'boolean') {
-			isRivalSkill = skill.custom.rival_support;
-		}
-
-		if ((unitType === targetType && !isRivalSkill) || (unitType !== targetType && isRivalSkill && (unitType === UnitType.ENEMY || targetType === UnitType.ENEMY))) {
-			return true;
-		}
-
-		return false;
 	}
-}
-);
+	);
 
 
+	var EntireHpRecovery = defineObject(BaseEventCommand,
+	{
+		_counter: 0,
+		_skill: null,
+		_unit: null,
+		_recoveryUnits: null,
+		_animationUnits: null,
+		_maxFrame: 60,
+		_dynamicAnimationEvent: null,
+		_isEndRecoveryValue: false,
+		_isEndDynamicEvent: false,
+		_isStartDynamicEvent: false,
 
-var EntireHpRecovery = defineObject(BaseEventCommand,
-{
-	_counter: 0,
-	_skill: null,
-	_unit: null,
-	_recoveryUnits: null,
-	_animationUnits: null,
-	_maxFrame: 60,
-	_dynamicAnimationEvent: null,
-	_isEndRecoveryValue: false,
-	_isEndDynamicEvent: false,
-	_isStartDynamicEvent: false,
+		enterEventCommandCycle: function(skill, unit, recoveryUnits) {
+			this._prepareEventCommandMemberData(skill, unit, recoveryUnits);
+			return this._completeEventCommandMemberData();
+		},
 
-	enterEventCommandCycle: function(skill, unit, recoveryUnits) {
-		this._prepareEventCommandMemberData(skill, unit, recoveryUnits);
-		return this._completeEventCommandMemberData();
-	},
+		moveEventCommandCycle: function() {
 
-	moveEventCommandCycle: function() {
+			this._moveRecoveryValue();
+			this._moveDynamicEvent();
 
-		this._moveRecoveryValue();
-		this._moveDynamicEvent();
-		
-		if (this._isEndRecoveryValue && this._isEndDynamicEvent) {
-			return MoveResult.END;
-		}
-
-		return MoveResult.CONTINUE;
-	},
-
-	_moveRecoveryValue: function() {
-
-		if (this._isEndRecoveryValue) {
-			return;
-		}
-
-		if (this._counter.moveCycleCounter() !== MoveResult.CONTINUE) {
-			this._isEndRecoveryValue = true;
-		}
-	},
-
-	_moveDynamicEvent: function() {
-
-		if (!this._isStartDynamicEvent) {
-			this._execDynamicEvent();
-		}
-
-		if (this._isEndDynamicEvent) {
-			return;
-		}
-
-		if (this._dynamicAnimationEvent.moveDynamicAnime() !== MoveResult.CONTINUE) {
-			this._isEndDynamicEvent = true;
-		}
-	},
-
-	drawEventCommandCycle: function() {
-
-		if (!this._isEndDynamicEvent) {
-			this._dynamicAnimationEvent.drawDynamicAnime();
-		}
-
-		this._drawRecoveryValue();
-        },
-
-	_execDynamicEvent: function() {
-		var anime, posAnime;
-		var generator = root.getEventGenerator();
-
-		generator.locationFocus(this._unit.getMapX(), this._unit.getMapY(), true);
-		generator.execute();
-
-		anime = this._getEffectAnimation();
-		posAnime = LayoutControl.getMapAnimationPos(LayoutControl.getPixelX(this._unit.getMapX()) ,  LayoutControl.getPixelY(this._unit.getMapY()), anime);
-		this._dynamicAnimationEvent.startDynamicAnime(anime,  posAnime.x, posAnime.y);
-
-		this._isStartDynamicEvent = true;
-	},
-
-	_drawRecoveryValue: function() {
-		var position = this._getNumberPosition();
-		var frame = this._counter.getCounter();
-		var rate = frame / this._maxFrame;
-		var setHp = 0;
-
-		for (var index = 0; index < this._animationUnits.length; index++) {
-			
-			/*if (!this._isEndRecoveryValue && frame === 0) {
-				this._animationUnits[index].beforeHp = this._animationUnits[index].unit.getHp();
-			}*/
-
-			// 回復量の数値の描画(画面外の場合は描画処理は行わない)
-			if (this._animationUnits[index].x >= 0 && this._animationUnits[index].y >= 0) {
-				if (this._animationUnits[index].recoveryValue >= 0) {
-					NumberRenderer.drawCenterNumberColorExtensionCube(this._animationUnits[index].x + position[0], this._animationUnits[index].y + position[1], this._animationUnits[index].recoveryValue, 2, 255);
-				} else if (this._animationUnits[index].recoveryValue < 0) {
-					NumberRenderer.drawCenterNumberColorExtensionCube(this._animationUnits[index].x + position[0], this._animationUnits[index].y + position[1], -1 * this._animationUnits[index].recoveryValue, 3, 255);
-				}
+			if (this._isEndRecoveryValue && this._isEndDynamicEvent) {
+				return MoveResult.END;
 			}
 
-			if (!this._isEndRecoveryValue && rate <= 1) {
-				setHp = this._animationUnits[index].beforeHp + this._animationUnits[index].recoveryValue * rate;
+			return MoveResult.CONTINUE;
+		},
 
-				if (setHp >= ParamBonus.getMhp(this._animationUnits[index].unit)) {
-					this._animationUnits[index].unit.setHp(ParamBonus.getMhp(this._animationUnits[index].unit));
-				} else if (setHp <= 0) {
-					this._animationUnits[index].unit.setHp(1);
-				} else {
-					this._animationUnits[index].unit.setHp(setHp);
+		_moveRecoveryValue: function() {
+
+			if (this._isEndRecoveryValue) {
+				return;
+			}
+
+			if (this._counter.moveCycleCounter() !== MoveResult.CONTINUE) {
+				this._isEndRecoveryValue = true;
+			}
+		},
+
+		_moveDynamicEvent: function() {
+
+			if (!this._isStartDynamicEvent) {
+				this._execDynamicEvent();
+			}
+
+			if (this._isEndDynamicEvent) {
+				return;
+			}
+
+			if (this._dynamicAnimationEvent.moveDynamicAnime() !== MoveResult.CONTINUE) {
+				this._isEndDynamicEvent = true;
+			}
+		},
+
+		drawEventCommandCycle: function() {
+
+			if (!this._isEndDynamicEvent) {
+				this._dynamicAnimationEvent.drawDynamicAnime();
+			}
+
+			this._drawRecoveryValue();
+ 		},
+
+		_execDynamicEvent: function() {
+			var anime, posAnime;
+			var generator = root.getEventGenerator();
+
+			generator.locationFocus(this._unit.getMapX(), this._unit.getMapY(), true);
+			generator.execute();
+
+			anime = this._getEffectAnimation();
+			posAnime = LayoutControl.getMapAnimationPos(LayoutControl.getPixelX(this._unit.getMapX()) ,  LayoutControl.getPixelY(this._unit.getMapY()), anime);
+			this._dynamicAnimationEvent.startDynamicAnime(anime,  posAnime.x, posAnime.y);
+
+			this._isStartDynamicEvent = true;
+		},
+
+		_drawRecoveryValue: function() {
+			var position = this._getNumberPosition();
+			var frame = this._counter.getCounter();
+			var rate = frame / this._maxFrame;
+			var setHp = 0;
+
+			for (var index = 0; index < this._animationUnits.length; index++) {
+
+				if (!this._isEndRecoveryValue && frame === 0) {
+					this._animationUnits[index].beforeHp = this._animationUnits[index].unit.getHp();
 				}
-			} 
-		}
-	},
 
-	_prepareEventCommandMemberData: function(skill, unit, recoveryUnits) {
-		this._counter = createObject(CycleCounter);
-		this._dynamicAnimationEvent = createObject(DynamicAnime);
-		this._skill = skill;
-		this._unit = unit;
-		this._recoveryUnits = recoveryUnits;
-		this._animationUnits = [];
-	},
+				// 回復量の数値の描画(画面外の場合は描画処理は行わない)
+				if (this._animationUnits[index].x >= 0 && this._animationUnits[index].y >= 0) {
+					if (this._animationUnits[index].recoveryValue >= 0) {
+						NumberRenderer.drawCenterNumberColorExtensionCube(this._animationUnits[index].x + position[0], this._animationUnits[index].y + position[1], this._animationUnits[index].recoveryValue, 2, 255);
+					} else if (this._animationUnits[index].recoveryValue < 0) {
+						NumberRenderer.drawCenterNumberColorExtensionCube(this._animationUnits[index].x + position[0], this._animationUnits[index].y + position[1], -1 * this._animationUnits[index].recoveryValue, 3, 255);
+					}
+				}
 
-	_completeEventCommandMemberData: function() {
-		var generator = root.getEventGenerator();
+				if (!this._isEndRecoveryValue && rate <= 1) {
+					setHp = this._animationUnits[index].beforeHp + this._animationUnits[index].recoveryValue * rate;
 
-		// 次の処理の都合上、ここでユニットの注目イベントを発生させる
-		generator.locationFocus(this._unit.getMapX(), this._unit.getMapY(), true);
-		generator.execute();
+					if (setHp >= ParamBonus.getMhp(this._animationUnits[index].unit)) {
+						this._animationUnits[index].unit.setHp(ParamBonus.getMhp(this._animationUnits[index].unit));
+					} else if (setHp <= 0) {
+						this._animationUnits[index].unit.setHp(1);
+					} else {
+						this._animationUnits[index].unit.setHp(setHp);
+					}
+				} 
+			}
+		},
+
+		_prepareEventCommandMemberData: function(skill, unit, recoveryUnits) {
+			this._counter = createObject(CycleCounter);
+			this._dynamicAnimationEvent = createObject(DynamicAnime);
+			this._skill = skill;
+			this._unit = unit;
+			this._recoveryUnits = recoveryUnits;
+			this._animationUnits = [];
+		},
+
+		_completeEventCommandMemberData: function() {
+			var generator = root.getEventGenerator();
+
+			// 次の処理の都合上、ここでユニットの注目イベントを発生させる
+			generator.locationFocus(this._unit.getMapX(), this._unit.getMapY(), true);
+			generator.execute();
 
 
-		for (var index = 0; index < this._recoveryUnits.length; index++) {
+			for (var index = 0; index < this._recoveryUnits.length; index++) {
 
-			var arrayObject = {
-				unit: null,
-				x: 0,
-				y: 0,
-				recoveryValue: 0,
-				beforeHp: 0
-			};
+				var arrayObject = {
+					unit: null,
+					x: 0,
+					y: 0,
+					recoveryValue: 0,
+					beforeHp: 0
+				};
 
-			arrayObject.unit = this._recoveryUnits[index].unit;
-			arrayObject.x = LayoutControl.getPixelX(arrayObject.unit.getMapX());
-			arrayObject.y = LayoutControl.getPixelY(arrayObject.unit.getMapY());
-			arrayObject.recoveryValue = this._recoveryUnits[index].recoveryValue;
-			arrayObject.beforeHp = arrayObject.unit.getHp();//
-			
-			this._animationUnits.push(arrayObject);
-		}
+				arrayObject.unit = this._recoveryUnits[index].unit;
+				arrayObject.x = LayoutControl.getPixelX(arrayObject.unit.getMapX());
+				arrayObject.y = LayoutControl.getPixelY(arrayObject.unit.getMapY());
+				arrayObject.recoveryValue = this._recoveryUnits[index].recoveryValue;
 
-		this._counter.setCounterInfo(this._maxFrame);
-		this._counter.disableGameAcceleration();
+				this._animationUnits.push(arrayObject);
+			}
 
-		return EnterResult.OK;
-	},
+			this._counter.setCounterInfo(this._maxFrame);
+			this._counter.disableGameAcceleration();
 
-	_getEffectAnimation: function() {
-		var anime = null;
+			return EnterResult.OK;
+		},
 
-		if (this._validateAnimeCustomParameter()) {
-			anime = root.getBaseData().getEffectAnimationList(this._skill.custom.hp_recovery.anime.runtime).getDataFromId(parseInt(this._skill.custom.hp_recovery.anime.id));
-		}
+		_getEffectAnimation: function() {
+			var anime = null;
 
-		if (!anime) {
-			anime = root.getBaseData().getEffectAnimationList(true).getDataFromId(ENTIRE_RECOVERY_DEFAULT_ANIME_ID);
-		}
+			if (this._validateAnimeCustomParameter()) {
+				anime = root.getBaseData().getEffectAnimationList(this._skill.custom.hp_recovery.anime.runtime).getDataFromId(parseInt(this._skill.custom.hp_recovery.anime.id));
+			}
 
-		return anime;
-	},
+			if (!anime) {
+				anime = root.getBaseData().getEffectAnimationList(true).getDataFromId(ENTIRE_RECOVERY_DEFAULT_ANIME_ID);
+			}
 
-	_validateAnimeCustomParameter: function() {
-		if (!('anime' in this._skill.custom.hp_recovery)) {
-			return false;
-		}
+			return anime;
+		},
 
-		if (!('runtime' in this._skill.custom.hp_recovery.anime) || !('id' in this._skill.custom.hp_recovery.anime)) {
-			return false;
-		}
+		_validateAnimeCustomParameter: function() {
+			if (!('anime' in this._skill.custom.hp_recovery)) {
+				return false;
+			}
 
-		if (typeof this._skill.custom.hp_recovery.anime.runtime !== 'boolean' || typeof parseInt(this._skill.custom.hp_recovery.anime.id) !== 'number') {
-			return false;
-		}
+			if (!('runtime' in this._skill.custom.hp_recovery.anime) || !('id' in this._skill.custom.hp_recovery.anime)) {
+				return false;
+			}
 
-		return true;
-	},
+			if (typeof this._skill.custom.hp_recovery.anime.runtime !== 'boolean' || typeof parseInt(this._skill.custom.hp_recovery.anime.id) !== 'number') {
+				return false;
+			}
 
-	_getNumberPosition: function() {
-		var frame = this._counter.getCounter();
-		var position;
+			return true;
+		},
 
-		if (frame <= 6) {
-			position = [GraphicsFormat.MAPCHIP_WIDTH / 2, -3 * frame];
-		} else if (frame <= 12) {
-			position = [GraphicsFormat.MAPCHIP_WIDTH / 2, -18 + 3 * frame];
-		} else {
+		_getNumberPosition: function() {
+			var frame = this._counter.getCounter();
+			var position;
+
+			if (frame <= 6) {
+				position = [GraphicsFormat.MAPCHIP_WIDTH / 2, -3 * frame];
+			} else if (frame <= 12) {
+				position = [GraphicsFormat.MAPCHIP_WIDTH / 2, -18 + 3 * frame];
+			} else {
 			position = [GraphicsFormat.MAPCHIP_WIDTH / 2, 0];
+			}
+			return position;
 		}
-		return position;
 	}
-}
-);
+	);
 
-// 下手したら他のスクリプトと競合しそうなのでメソッド名を変な名前にしてます
-NumberRenderer.drawCenterNumberColorExtensionCube = function(x, y, number, colorIndex, alpha) {
-	var pic = root.queryUI('bignumber');
-	var width = UIFormat.BIGNUMBER_WIDTH / 10;
-	var height = UIFormat.BIGNUMBER_HEIGHT / 5;
-	var ySrc = height * colorIndex;
+	// 他のスクリプトと競合しそうなのでメソッド名を変な名前にしてます
+	NumberRenderer.drawCenterNumberColorExtensionCube = function(x, y, number, colorIndex, alpha) {
+		var pic = root.queryUI('bignumber');
+		var width = UIFormat.BIGNUMBER_WIDTH / 10;
+		var height = UIFormat.BIGNUMBER_HEIGHT / 5;
+		var ySrc = height * colorIndex;
 
-	this._drawCenterNumberInternalExtensionCube(x, y, number, pic, ySrc, width, height, alpha);
-};
+		this._drawCenterNumberInternalExtensionCube(x, y, number, pic, ySrc, width, height, alpha);
+	};
 
-// 下手したら他のスクリプトと競合しそうなのでメソッド名を変な名前にしてます
-NumberRenderer._drawCenterNumberInternalExtensionCube = function(x, y, number, pic, ySrc, width, height, alpha) {
-	var i, n;
-	var dx = width / 2;
-	var count = 0;
-	var digitArray = [];
+	// 他のスクリプトと競合しそうなのでメソッド名を変な名前にしてます
+	NumberRenderer._drawCenterNumberInternalExtensionCube = function(x, y, number, pic, ySrc, width, height, alpha) {
+		var i, n;
+		var dx = width / 2;
+		var count = 0;
+		var digitArray = [];
 
-	if (pic === null || number < 0) {
-		return;
-	}
+		if (pic === null || number < 0) {
+			return;
+		}
 
-	if (number === 0) {
-		pic.drawParts(x - dx, y, 0, ySrc, width, height);
-		return;
-	}
+		if (number === 0) {
+			pic.drawParts(x - dx, y, 0, ySrc, width, height);
+			return;
+		}
 
-	while (number > 0) {
-		n = Math.floor(number % 10);
-		number = Math.floor(number / 10);
-		digitArray[count] = n;
-		count++;
-	}
+		while (number > 0) {
+			n = Math.floor(number % 10);
+			number = Math.floor(number / 10);
+			digitArray[count] = n;
+			count++;
+		}
 
-	dx += (count - 1) * width / 2;
+		dx += (count - 1) * width / 2;
 
-	for (i = count - 1; i >= 0; i--) {
-		pic.setAlpha(alpha);
-		pic.drawParts(x - dx, y, digitArray[i] * width , ySrc, width, height);
-		x += 12;
-	}
-};
+		for (i = count - 1; i >= 0; i--) {
+			pic.setAlpha(alpha);
+			pic.drawParts(x - dx, y, digitArray[i] * width , ySrc, width, height);
+			x += 12;
+		}
+	};
 
-})();
+})(); 
